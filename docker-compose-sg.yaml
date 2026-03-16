@@ -1,0 +1,37 @@
+services:
+
+  qwen3-5:
+    image: lmsysorg/sglang:latest
+    ports:
+      - "${PORT}:8000"
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - DOCKER_GPU_IDS=${DOCKER_GPU_IDS}
+      - MODEL_NAME=${MODEL_NAME}
+      - MAX_MODEL_LEN=${MAX_MODEL_LEN}
+      - PORT=${PORT}
+      # - VLLM_ATTENTION_BACKEND=HIP_ATTN
+      # - HIP_K=512
+      # - HIP_REFRESH_INTERVAL=8
+      # - HIP_DENSE_LAYERS=4
+
+    volumes:
+      - "${RESOURCES_PATH:-./resources}:/app/resources:rw"
+      - "${HF_HOME}/:/home/compressa/.cache/:rw"
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            device_ids: [ "${DOCKER_GPU_IDS:-all}" ]
+            capabilities: [ gpu ]
+    ipc: "host"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      stack:
+        soft: 67108864
+        hard: 67108864
+    container_name: qwen3-5
+    command: python -m sglang.launch_server --model-path /app/resources/models/models/${MODEL_NAME} --port ${PORT} --tp-size ${TP_SIZE:-1} --mem-fraction-static 0.8 --context-length ${MAX_MODEL_LEN} --reasoning-parser qwen3 --tool-call-parser qwen3_coder

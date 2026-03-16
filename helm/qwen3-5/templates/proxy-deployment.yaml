@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "qwen35.proxy.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "qwen35.name" . }}-proxy
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: proxy
+spec:
+  replicas: {{ .Values.proxy.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "qwen35.name" . }}-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "qwen35.name" . }}-proxy
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: proxy
+          image: "{{ .Values.proxy.image.repository }}:{{ .Values.proxy.image.tag }}"
+          imagePullPolicy: {{ .Values.proxy.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.proxy.service.port }}
+              protocol: TCP
+          env:
+            - name: DISPATCHER_PORT
+              value: "{{ .Values.proxy.service.port }}"
+            - name: CONTAINER_RESOURCES_PATH
+              value: /app/resources
+            - name: LLM_HOST
+              value: {{ include "qwen35.vllm.fullname" . }}
+            - name: LLM_PORT
+              value: "{{ .Values.vllm.service.port }}"
+            - name: MODEL_NAME
+              value: {{ .Values.modelName | quote }}
+            - name: RESOURCES_PATH
+              value: {{ .Values.resourcesPath | quote }}
+          {{- with .Values.proxy.env }}
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: resources
+              mountPath: /app/resources
+              subPath: {{ .Values.proxy.volumeMounts.resources.subPath | default "" }}
+          {{- with .Values.proxy.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: resources
+          hostPath:
+            path: {{ .Values.resourcesPath }}
+            type: DirectoryOrCreate
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "qwen35.vllm.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "qwen35.name" . }}-vllm
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: vllm
+spec:
+  replicas: {{ .Values.vllm.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "qwen35.name" . }}-vllm
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "qwen35.name" . }}-vllm
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      hostIPC: true
+      containers:
+        - name: vllm
+          image: "{{ .Values.vllm.image.repository }}:{{ .Values.vllm.image.tag }}"
+          imagePullPolicy: {{ .Values.vllm.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.vllm.service.port }}
+              protocol: TCP
+          args:
+            - --model
+            - {{ include "qwen35.modelPath" . }}
+            - --dtype
+            - auto
+            - --max-model-len
+            - {{ .Values.maxModelLen | quote }}
+            - --gpu-memory-utilization
+            - {{ .Values.gpuMemoryUtilization | quote }}
+            - --max-num-seqs
+            - {{ .Values.maxNumSeqs | quote }}
+            {{- if .Values.quantization }}
+            - --quantization
+            - {{ .Values.quantization | quote }}
+            {{- end }}
+            - --enable-expert-parallel
+            - --reasoning-parser
+            - qwen3
+            - --enable-prefix-caching
+            - --enable-auto-tool-choice
+            - --tool-call-parser
+            - qwen3_coder
+            {{- range .Values.vllm.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: PORT
+              value: "{{ .Values.vllm.service.port }}"
+            - name: MODEL_NAME
+              value: {{ .Values.modelName | quote }}
+            - name: MAX_MODEL_LEN
+              value: {{ .Values.maxModelLen | quote }}
+            - name: GPU_MEMORY_UTILIZATION
+              value: {{ .Values.gpuMemoryUtilization | quote }}
+            - name: MAX_NUM_SEQS
+              value: {{ .Values.maxNumSeqs | quote }}
+            - name: PYTORCH_CUDA_ALLOC_CONF
+              value: {{ .Values.vllm.env.PYTORCH_CUDA_ALLOC_CONF | default "expandable_segments:True" | quote }}
+            {{- if .Values.existingSecret }}
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: {{ .Values.secretKeys.hfToken }}
+            {{- end }}
+          volumeMounts:
+            - name: resources
+              mountPath: /app/resources
+              subPath: {{ .Values.vllm.volumeMounts.resources.subPath | default "" }}
+            - name: hf-cache
+              mountPath: /home/compressa/.cache
+              subPath: {{ .Values.vllm.volumeMounts.hfCache.subPath | default "" }}
+          {{- with .Values.vllm.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            capabilities:
+              add:
+                - SYS_PTRACE
+      volumes:
+        - name: resources
+          hostPath:
+            path: {{ .Values.resourcesPath }}
+            type: DirectoryOrCreate
+        - name: hf-cache
+          hostPath:
+            path: {{ .Values.hfHome }}
+            type: DirectoryOrCreate
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

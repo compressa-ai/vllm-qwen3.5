@@ -1,0 +1,36 @@
+# Values tuned for k3s (single-node / edge)
+# Install: helm install qwen35 ./qwen3-5 -n qwen35 -f values-k3s.yaml
+
+# --- Ingress: k3s uses Traefik by default ---
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+  hosts:
+    - host: qwen3-5.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# --- GPU: если нода с GPU имеет taint от nvidia-device-plugin ---
+tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+
+# Привязка к ноде с GPU (опционально, раскомментировать и задать имя ноды)
+# nodeSelector:
+#   nvidia.com/gpu: "true"
+
+# --- Доступ с хоста: через NodePort (k3s servicelb или NodePort) ---
+proxy:
+  service:
+    type: NodePort
+    port: 8000
+    externalPort: 10010
+
+# --- Тома: на k3s часто те же hostPath; для PVC раскомментировать в шаблонах ---
+# На single-node k3s пути обычно с хоста ноды
+# resourcesPath: /data/shared/CompressaAI/test_deploy
+# hfHome: /data/shared/CompressaAI/k_cache

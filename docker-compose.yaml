@@ -1,0 +1,60 @@
+services:
+
+  proxy:
+    build:
+      context: .
+      dockerfile: proxy/Dockerfile
+    ports:
+      - "${EXTERNAL_PORT}:8000"
+    environment:
+      - EXTERNAL_PORT=${EXTERNAL_PORT:-10010}
+      - DISPATCHER_PORT=8000
+    env_file:
+      - .env
+    volumes:
+      - "${RESOURCES_PATH:-./resources}:/app/resources:rw"
+    networks:
+      - qwen35-network
+    container_name: proxy
+  
+  qwen3-5:
+    image: vllm/vllm-openai:nightly
+    expose:
+      - "8000"
+    ports:
+      - "11111:8000"
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - DOCKER_GPU_IDS=${DOCKER_GPU_IDS}
+      - MODEL_NAME=${MODEL_NAME}
+      - MAX_MODEL_LEN=${MAX_MODEL_LEN}
+      - PORT=${PORT}
+      - GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION:-0.85}
+      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
+      - QUANTIZATION=${QUANTIZATION:-}
+    volumes:
+      - "${RESOURCES_PATH:-./resources}:/app/resources:rw"
+      - "${HF_HOME}/:/home/compressa/.cache/:rw"
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            device_ids: [ "${DOCKER_GPU_IDS:-all}" ]
+            capabilities: [ gpu ]
+    ipc: "host"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      stack:
+        soft: 67108864
+        hard: 67108864
+    container_name: qwen3-5
+    networks:
+      - qwen35-network
+    command: --model /app/resources/models/models/${MODEL_NAME} --dtype auto --max-model-len ${MAX_MODEL_LEN} --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.85} --max-num-seqs ${MAX_NUM_SEQS:-8} ${QUANTIZATION:+--quantization ${QUANTIZATION}} --enable-expert-parallel --reasoning-parser qwen3 --enable-prefix-caching --enable-auto-tool-choice --tool-call-parser qwen3_coder
+
+networks:
+  qwen35-network:
+    external: true

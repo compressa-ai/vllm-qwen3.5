@@ -1,0 +1,97 @@
+# Default values from docker-compose and .env_example
+
+# --- Proxy (OpenAI-compatible API frontend) ---
+proxy:
+  image:
+    # Build from repo: docker build -f proxy/Dockerfile -t <registry>/qwen35-proxy:latest .
+    repository: qwen35-proxy
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 8000
+    externalPort: 10010  # NodePort/LoadBalancer external port hint
+  resources: {}
+  env:
+    DISPATCHER_PORT: "8000"
+    CONTAINER_RESOURCES_PATH: /app/resources
+    LLM_PORT: "8000"
+  volumeMounts:
+    resources:
+      mountPath: /app/resources
+      subPath: ""  # set in resourcesPath
+
+# --- vLLM backend (Qwen3.5) ---
+vllm:
+  image:
+    repository: vllm/vllm-openai
+    tag: nightly
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  service:
+    port: 8000
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+    requests:
+      nvidia.com/gpu: 1
+  env:
+    PORT: "8000"
+    GPU_MEMORY_UTILIZATION: "0.85"
+    PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+    MAX_NUM_SEQS: "8"
+  volumeMounts:
+    resources:
+      mountPath: /app/resources
+      subPath: ""
+    hfCache:
+      mountPath: /home/compressa/.cache
+      subPath: ""
+  # vLLM CLI args; --model path is built in template from modelName
+  extraArgs:
+    - --dtype
+    - auto
+    - --enable-expert-parallel
+    - --reasoning-parser
+    - qwen3
+    - --enable-prefix-caching
+    - --enable-auto-tool-choice
+    - --tool-call-parser
+    - qwen3_coder
+
+# --- Shared / global ---
+modelName: Qwen_Qwen3.5-35B-A3B-FP8
+maxModelLen: "128000"
+gpuMemoryUtilization: "0.95"
+maxNumSeqs: 4
+quantization: ""  # e.g. awq, gptq
+
+# Paths on the host / PVC (must exist or be created)
+resourcesPath: /data/shared/CompressaAI/test_deploy
+hfHome: /data/shared/CompressaAI/k_cache
+
+# GPU device IDs for docker; in K8s usually one GPU per pod or "all"
+gpuIds: "0"
+
+# Secrets (create separately, do not commit real values)
+existingSecret: ""  # name of Secret containing HF_TOKEN, etc.
+secretKeys:
+  hfToken: HF_TOKEN
+
+# Ingress (optional)
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: qwen3-5.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Node selector / tolerations for GPU nodes
+nodeSelector: {}
+tolerations: []
+affinity: {}

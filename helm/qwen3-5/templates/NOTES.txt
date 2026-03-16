@@ -1,0 +1,17 @@
+1. Create a Secret with HF_TOKEN (if using private models):
+   kubectl create secret generic <secret-name> --from-literal=HF_TOKEN=<your-token>
+   Then set in values: existingSecret: <secret-name>
+
+2. Ensure nodes have access to host paths (or replace with PVCs):
+   - resourcesPath: {{ .Values.resourcesPath }}
+   - hfHome: {{ .Values.hfHome }}
+
+3. Proxy (OpenAI-compatible API):
+   - Service: {{ include "qwen35.proxy.fullname" . }}:{{ .Values.proxy.service.port }}
+   - From inside cluster: http://{{ include "qwen35.proxy.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.proxy.service.port }}/v1/
+
+4. vLLM backend is internal (ClusterIP). Only proxy is exposed.
+
+5. To use NodePort for proxy, set in values:
+   proxy.service.type: NodePort
+   proxy.service.externalPort: 10010
